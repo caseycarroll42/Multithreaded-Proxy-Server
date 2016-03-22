@@ -32,7 +32,7 @@ void send_header(int result, int accept_sock);
 int connect_to_webserver(struct HTTP_request request);
 void recv_from_webserver(int web_sock, int local_sock, char *url);
 
-
+int urlBlacklisted(char *url);
 
 
 int main() {
@@ -56,7 +56,13 @@ int main() {
 
 	// Determine what kind of request the client sent
 	if(strcasecmp(client_request.method, "GET") == 0)
-	{				
+	{		
+		//check if url is blacklisted
+		if(urlBlacklisted(client_request.path))
+		{
+			//send 401
+			printf("sending 401...\n");
+		}		
 		//redirect user to index if they request base url
 		if(client_request.path[0] == '\0')
 		{
@@ -384,5 +390,29 @@ int serve_file(FILE *fpRead, int accept_sock)
 		writeSuccess = write(accept_sock, buf, strlen(buf));		
 		bzero(buf, sizeof(buf));
 	} while(!feof(fpRead));
+	return 0;
+}
+
+int urlBlacklisted(char *url)
+{
+	FILE *fp;
+	char blackListURL[256];
+	int i = 0;
+
+	fp = fopen("blacklist.txt","r");
+
+	while(!feof(fp))
+	{
+		fgets(blackListURL, sizeof(blackListURL), fp);
+		printf("%s", blackListURL);
+		if(strcmp(blackListURL, url) == 0)
+		{
+			//close file and send success code			
+			fclose(fp);
+			return 1;
+		}
+	}
+
+	fclose(fp);
 	return 0;
 }
