@@ -34,13 +34,12 @@ int connect_to_webserver(struct HTTP_request request);
 void recv_from_webserver(int web_sock, int local_sock, char *url);
 
 int urlBlacklisted(char *url);
+void *client_handler(void *sock_desc, int accept_sock);
 
 
 int main() {
-	int serv_sock, accept_sock, web_sock;
-	char header[1000];
-	struct HTTP_request client_request;
-	FILE * fpRead;
+	int serv_sock, accept_sock;
+
 
 	
 	//create socket server
@@ -49,54 +48,9 @@ int main() {
 	//accept connection from the client
 	accept_sock = connect_to_client(serv_sock);
 
-	//get the HTTP request from client
-	strcpy(header, recv_request(accept_sock));
 
-	//parse the HTTP request and put into struct
-	client_request = parse_header(header, accept_sock);	
 
-	// Determine what kind of request the client sent
-	if(strcasecmp(client_request.method, "GET") == 0)
-	{		
-		//check if url is blacklisted
-		if(urlBlacklisted(client_request.path))
-		{
-			//send 401
-			printf("sending 401...\n");
-		}		
-		//redirect user to index if they request base url
-		if(client_request.path[0] == '\0')
-		{
-			printf("user requested base url... redirecting to index.html\n");
-			strcat(client_request.path, "index.html");
-		}
-		//check to see if there is a cache or a resource file in the server
-		fpRead = file_exists(client_request.path);
-		if(fpRead != NULL)
-		{
-			//serve the file
-			send_header(0, accept_sock); //send 200 OK
-			serve_file(fpRead, accept_sock); //send file
-		} else {
-			//contact webserver
-			web_sock = connect_to_webserver(client_request);
-			if(web_sock < 0)
-			{
-				printf("send 404\n");
-				send_header(-1, accept_sock);
-			} else {
-				//get the data from the webserver
-				recv_from_webserver(web_sock, accept_sock, client_request.path);
-			}				
 
-		}
-	//catchall for any other types of requests since they are not required in the assignment
-	} else {
-		printf("the request: %s is not supported\n", client_request.method);		
-	}
-
-	if(fpRead != NULL)
-		fclose(fpRead);
 
 	close(serv_sock);
 	close(accept_sock);
@@ -166,6 +120,68 @@ int connect_to_client(int serv_sock)
 	}
 
 	return accept_sock;
+}
+/******************************************************
+ * These tasks were originally in main, but since these
+ * tasks are completed at a per thread basis, they needed
+ * to be moved to this function
+******************************************************/
+void *client_handler(void *sock_desc, int accept_sock)
+{
+	char header[1000];
+	int web_sock;
+	struct HTTP_request client_request;
+	FILE * fpRead;
+
+	//get the HTTP request from client
+	strcpy(header, recv_request(accept_sock));
+
+	//parse the HTTP request and put into struct
+	client_request = parse_header(header, accept_sock);	
+
+	// Determine what kind of request the client sent
+	if(strcasecmp(client_request.method, "GET") == 0)
+	{		
+		//check if url is blacklisted
+		if(urlBlacklisted(client_request.path))
+		{
+			//send 401
+			printf("sending 401...\n");
+		}		
+		//redirect user to index if they request base url
+		if(client_request.path[0] == '\0')
+		{
+			printf("user requested base url... redirecting to index.html\n");
+			strcat(client_request.path, "index.html");
+		}
+		//check to see if there is a cache or a resource file in the server
+		fpRead = file_exists(client_request.path);
+		if(fpRead != NULL)
+		{
+			//serve the file
+			send_header(0, accept_sock); //send 200 OK
+			serve_file(fpRead, accept_sock); //send file
+		} else {
+			//contact webserver
+			web_sock = connect_to_webserver(client_request);
+			if(web_sock < 0)
+			{
+				printf("send 404\n");
+				send_header(-1, accept_sock);
+			} else {
+				//get the data from the webserver
+				recv_from_webserver(web_sock, accept_sock, client_request.path);
+			}				
+
+		}
+	//catchall for any other types of requests since they are not required in the assignment
+	} else {
+		printf("the request: %s is not supported\n", client_request.method);		
+	}
+
+	if(fpRead != NULL)
+		fclose(fpRead);
+	return 0;	
 }
 
 /****************************************************** 
