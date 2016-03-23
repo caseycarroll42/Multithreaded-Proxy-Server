@@ -379,9 +379,8 @@ void send_header(int result, int accept_sock) {
 ******************************************************/
 int serve_file(FILE *fpRead, int accept_sock)
 {
-	char buf[256];
-	int writeSuccess;
-	long file_size;
+	char buf[1024];
+	int writeSuccess;	
 	
 	bzero(buf, sizeof(buf));
 
