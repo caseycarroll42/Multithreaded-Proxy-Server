@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #define PORT_NO 8080
 #define BUF_REQUEST_SIZE 1024
