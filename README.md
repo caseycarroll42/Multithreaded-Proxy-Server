@@ -14,5 +14,5 @@ This project is the second programming assignment in UNT's Intro to Networks cla
 I simply took the example code from blackboard and implemented it into my pre-existing code from the first programming assignment. 
 
 ##Screenshots:
-####Showing how program can load index file and block user from going to a blacklisted file simultaneously
+####Showing how program can load index file and block user from going to a blacklisted url simultaneously
 ![alt tag](https://raw.githubusercontent.com/caseycarroll42/Multithreaded-Proxy-Server/master/multi-thread-screenshot.png)
