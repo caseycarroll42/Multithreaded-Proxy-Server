@@ -189,6 +189,7 @@ void *client_handler(void *sock_desc)
 			//send 401
 			printf("sending 401...\n");
 			send_header(-2, accept_sock);
+			pthread_exit("closing this thread");
 		}		
 		//redirect user to index if they request base url
 		if(client_request.path[0] == '\0')
@@ -225,7 +226,7 @@ void *client_handler(void *sock_desc)
 
 	if(fpRead != NULL)
 		fclose(fpRead);
-	return 0;	
+	pthread_exit("closing this thread");
 }
 
 /****************************************************** 
@@ -377,10 +378,10 @@ int connect_to_webserver(struct HTTP_request request)
 void recv_from_webserver(int web_sock, int local_sock, char *url)
 {
 	int bytes_read;
-	char buf[500];
+	char buf[1024];
 	FILE *fpWrite;
 	FILE *fpRead;
-	char new_filepath[256];
+	char new_filepath[512];
 
 	//create filename and location for cached website
 	strcpy(new_filepath, "resources/");
@@ -390,16 +391,17 @@ void recv_from_webserver(int web_sock, int local_sock, char *url)
 
 	fpWrite = fopen(new_filepath, "w+");
 
-	while (read(web_sock, buf, sizeof(buf)))
+	while ((bytes_read = read(web_sock, buf, (sizeof(buf)-1))) > 0)
 	{
+		buf[bytes_read]='\0';
 		//save to file
-		fprintf(fpWrite, "%s", buf);	
+		fputs(buf, fpWrite);			
 		//send to browser/client
-		write(local_sock, buf, sizeof(buf));
+		write(local_sock, buf, strlen(buf));
+		printf("test local_sock %d\n", local_sock);
 		//clear buffer	
-		bzero(buf, sizeof(buf));
+		memset(buf, '\0', sizeof(buf));
 	}
-
 	fprintf(fpWrite, "%s\n", "THIS IS CHACHED");
 
 	fclose(fpWrite);
@@ -417,6 +419,7 @@ void send_header(int result, int accept_sock) {
 	{
 		//send 200
 		writeSuccess = write(accept_sock, OK_response, strlen(OK_response));
+		printf("test local_sock %d\n", accept_sock);
 		printf("***********response***********\n%s", OK_response);
 		if(writeSuccess < 0)
 		{
