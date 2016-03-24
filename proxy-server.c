@@ -14,6 +14,8 @@
 #define PORT_NO 8080
 #define BUF_REQUEST_SIZE 1024
 
+int threadCount = 5;
+
 struct HTTP_request {
 	char method[500];
 	char path[256];
@@ -34,21 +36,58 @@ int connect_to_webserver(struct HTTP_request request);
 void recv_from_webserver(int web_sock, int local_sock, char *url);
 
 int urlBlacklisted(char *url);
-void *client_handler(void *sock_desc, int accept_sock);
+void *client_handler(void *sock_desc);
 
 
 int main() {
-	int serv_sock, accept_sock;
-
+	char buffer[256];
+	int serv_sock, accept_sock, num_data_recv, status;
+	int *sock_tmp;
+	struct sockaddr_in cli_addr;
+	socklen_t addr_size;	
+	pthread_t a_thread;		
 
 	
 	//create socket server
 	serv_sock = create_server();
 
 	//accept connection from the client
-	accept_sock = connect_to_client(serv_sock);
+	//accept_sock = connect_to_client(serv_sock);
 
+	//ADD THREADING
+	status = listen(serv_sock, 5);
+    if (status < 0) {
+        perror("listen() failed");
+        close(serv_sock);
+        exit(1);
+    }
 
+	printf("listening on port %d\n", PORT_NO);
+
+	addr_size = sizeof(cli_addr);
+
+	while(1)
+	{
+		accept_sock = accept(serv_sock, (struct sockaddr *)&cli_addr, &addr_size);
+        if (accept_sock == -1){
+            close(serv_sock);
+            exit(1);
+        }
+
+        sock_tmp = malloc(1);
+        *sock_tmp = accept_sock;
+        printf("thread count = %d\n", threadCount);
+        threadCount--;
+        status = pthread_create(&a_thread, NULL, client_handler,
+            (void *) sock_tmp);
+        if (status != 0) {
+            perror("Thread creation failed");
+            close(serv_sock);
+            close(accept_sock);
+            free(sock_tmp);
+            exit(1);
+        }	
+	}
 
 
 
@@ -99,46 +138,48 @@ int create_server()
  * The function will accept the connection and return the socket id for this connection
  * Parameters: the socket connected to the client
 ******************************************************/
-int connect_to_client(int serv_sock)
-{
-	struct sockaddr_in cli_addr;
-	socklen_t addr_size;
+// int connect_to_client(int serv_sock)
+// {
+// 	struct sockaddr_in cli_addr;
+// 	socklen_t addr_size;
 
-	int accept_sock, num_data_recv;
-	char buffer[256];
+// 	int accept_sock, num_data_recv;
+// 	char buffer[256];
 
-	listen(serv_sock, 5);
-	printf("listening on port %d\n", PORT_NO);
+// 	listen(serv_sock, 5);
+// 	printf("listening on port %d\n", PORT_NO);
 
-	addr_size = sizeof(cli_addr);
+// 	addr_size = sizeof(cli_addr);
 
-	accept_sock = accept(serv_sock, (struct sockaddr *)&cli_addr, &addr_size);
-	if(accept_sock < 0)
-	{
-		printf("error accepting\n");
-		exit(1);
-	}
+// 	accept_sock = accept(serv_sock, (struct sockaddr *)&cli_addr, &addr_size);
+// 	if(accept_sock < 0)
+// 	{
+// 		printf("error accepting\n");
+// 		exit(1);
+// 	}
 
-	return accept_sock;
-}
+// 	return accept_sock;
+// }
 /******************************************************
  * These tasks were originally in main, but since these
  * tasks are completed at a per thread basis, they needed
  * to be moved to this function
 ******************************************************/
-void *client_handler(void *sock_desc, int accept_sock)
+void *client_handler(void *sock_desc)
 {
 	char header[1000];
 	int web_sock;
 	struct HTTP_request client_request;
+	int accept_sock = *(int*)sock_desc;
 	FILE * fpRead;
 
+	printf("test before checking recv request\n");
 	//get the HTTP request from client
 	strcpy(header, recv_request(accept_sock));
 
 	//parse the HTTP request and put into struct
 	client_request = parse_header(header, accept_sock);	
-
+	
 	// Determine what kind of request the client sent
 	if(strcasecmp(client_request.method, "GET") == 0)
 	{		
@@ -147,6 +188,7 @@ void *client_handler(void *sock_desc, int accept_sock)
 		{
 			//send 401
 			printf("sending 401...\n");
+			send_header(-2, accept_sock);
 		}		
 		//redirect user to index if they request base url
 		if(client_request.path[0] == '\0')
@@ -154,8 +196,10 @@ void *client_handler(void *sock_desc, int accept_sock)
 			printf("user requested base url... redirecting to index.html\n");
 			strcat(client_request.path, "index.html");
 		}
+		
 		//check to see if there is a cache or a resource file in the server
 		fpRead = file_exists(client_request.path);
+		
 		if(fpRead != NULL)
 		{
 			//serve the file
@@ -195,8 +239,9 @@ char * recv_request(accept_sock)
 	int num_data_recv;
 
 	bzero(buffer, BUF_REQUEST_SIZE);
+	printf("before read\n");
 	num_data_recv = read(accept_sock, buffer, BUF_REQUEST_SIZE);
-
+	printf("after read\n");
 	if(num_data_recv < 0)
 	{
 		printf("error reading from socket\n");
@@ -252,6 +297,7 @@ FILE * file_exists(char *file_path)
 {
 	FILE *fpRead;
 	char resource_path[256];
+	printf("in file exists\n");
 
 	//create path to resources directory
 	strcpy(resource_path, "resources/");
@@ -377,6 +423,13 @@ void send_header(int result, int accept_sock) {
 			printf("error writing to client\n");
 			exit(1);
 		}
+	} else if (result == -2)
+	{
+		//send 401	
+		strcpy(BAD_response, "HTTP/1.1 401 ACCESS DENIED\r\n");
+		strcat(BAD_response, "Content-Type: text/html\r\n\r\n");
+		strcat(BAD_response, "<HTML><TITLE>401 Access Denied</TITLE><BODY><H1>Status: 401 Access Denied</H1></BODY></HTML>\r\n\r\n");
+		writeSuccess = write(accept_sock, BAD_response, strlen(BAD_response));				
 	} else {
 		//send 404		
 		strcpy(BAD_response, "HTTP/1.1 404 NOT FOUND\r\n");
@@ -414,13 +467,11 @@ int urlBlacklisted(char *url)
 	FILE *fp;
 	char blackListURL[256];
 	int i = 0;
-
 	fp = fopen("blacklist.txt","r");
 
 	while(!feof(fp))
 	{
-		fgets(blackListURL, sizeof(blackListURL), fp);
-		printf("%s", blackListURL);
+		fgets(blackListURL, sizeof(blackListURL), fp);		
 		if(strcmp(blackListURL, url) == 0)
 		{
 			//close file and send success code			
